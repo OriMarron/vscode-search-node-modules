@@ -104,7 +104,7 @@ exports.activate = context => {
         const getWorkspaceFolder = async () => {
             if (vscode.workspace.workspaceFolders.length === 1) {
                 const folder = vscode.workspace.workspaceFolders[0];
-                return getPackageFolder(folder);
+                return folder;
             }
 
             const selected = await vscode.window.showQuickPick(vscode.workspace.workspaceFolders.map(folder => ({
@@ -118,7 +118,7 @@ exports.activate = context => {
                 return;
             }
 
-            return getPackageFolder(selected.folder);
+            return selected.folder;
         };
 
         // Open last folder if there is one
@@ -131,7 +131,7 @@ exports.activate = context => {
             return showError('You must have a workspace opened.');
         }
 
-        getWorkspaceFolder().then(folder => {
+        getWorkspaceFolder().then(folder => folder && getPackageFolder(folder)).then(folder => {
             if (folder) {
                 searchPath(folder.name, folder.path, nodeModulesPath);
             }

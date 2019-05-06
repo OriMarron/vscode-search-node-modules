@@ -2,36 +2,34 @@ const fs = require('fs');
 const util = require('util');
 const path = require('path');
 
-const readdir = util.promisify(fs.readdir);
-const stat = util.promisify(fs.stat);
+const glob = util.promisify(require('glob'));
 
-const isDir = async dir => stat(dir).then(s => s.isDirectory());
+const exists = util.promisify(fs.exists);
+const readFile = util.promisify(fs.readFile);
+
+const LERNA_CONFIG_FILE = 'lerna.json';
+
+const flat = arrays => [].concat.apply([], arrays);
 
 const findModuleDirs = async root => {
-    const ret = [];
+    if (await exists(path.join(root, LERNA_CONFIG_FILE))) {
+        const data = await readFile(path.join(root, LERNA_CONFIG_FILE));
 
-    const recurse = async dir => {
-        const list = await readdir(dir);
+        const config = JSON.parse(data);
+        const packagesConfig = config.packages || [];
 
-        if (list.includes('package.json') && list.includes('node_modules')) {
-            ret.push(path.relative(root, dir));
-        }
-
-        return Promise.all(
-            list.map(async item => {
-                if (item === 'node_modules') {
-                    return;
-                }
-                const itemPath = path.join(dir, item);
-                if (await isDir(itemPath)) {
-                    return recurse(path.join(dir, item));
-                }
-            })
+        const matches = flat(
+            await Promise.all(
+                packagesConfig.map(pattern => {
+                    if (pattern.includes('**')) return [];
+                    return glob(path.join(root, pattern, '/package.json'));
+                })
+            )
         );
-    };
 
-    await recurse(root);
-    return ret;
+        return [ '', ...matches.map(match => path.relative(root, match)) ];
+    }
+    return [ '' ];
 };
 
 module.exports = { findModuleDirs };
