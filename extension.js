@@ -1,7 +1,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const { findModuleDirs } = require('./utils');
+const { findLernaPackageDirs } = require('./utils');
 
 var lastFolder = '';
 var lastWorkspaceName = '';
@@ -76,49 +76,54 @@ exports.activate = context => {
             });
         };
 
-        const getPackageFolder = async (workspaceFolder) => {
-            const packages = await findModuleDirs(workspaceFolder.uri.fsPath);
-            if (packages.length > 1) {
+        const getProjectFolder = async (workspaceFolder) => {
+            const packages = await findLernaPackageDirs(workspaceFolder.uri.fsPath);
+            // If in a lerna monorepo, prompt user to select which project to traverse
+            if (packages.length > 0) {
                 const selected = await vscode.window.showQuickPick(
-                    packages.map(packageName => ({ label: path.join(workspaceFolder.name, packageName), name: packageName }))
-                    , { placeHolder: 'Select package' }
+                    [
+                        { label: workspaceFolder.name, packageDir: '' },
+                        ...packages.map(packageDir => ({ label: path.join(workspaceFolder.name, packageDir), packageDir }))
+                    ]
+                    , { placeHolder: 'Select Project' }
                 );
                 if (!selected) {
                     return;
                 }
 
-                if (selected !== workspaceFolder.name) {
-                    return {
-                        name: selected.label,
-                        path: path.join(workspaceFolder.uri.fsPath, selected.name)
-                    };
-                }
+                return {
+                    name: selected.label,
+                    path: path.join(workspaceFolder.uri.fsPath, selected.packageDir)
+                };
             }
 
+            // Otherwise, use the root folder
             return {
-                name: path.join(workspaceFolder.name, nodeModulesPath),
+                name: workspaceFolder.name,
                 path: workspaceFolder.uri.fsPath
             };
         };
 
         const getWorkspaceFolder = async () => {
-            if (vscode.workspace.workspaceFolders.length === 1) {
-                const folder = vscode.workspace.workspaceFolders[0];
-                return folder;
+            // If in a multifolder workspace, prompt user to select which one to traverse.
+            if (vscode.workspace.workspaceFolders.length > 1) {
+                const selected = await vscode.window.showQuickPick(vscode.workspace.workspaceFolders.map(folder => ({
+                    label: folder.name,
+                    folder
+                })), {
+                    placeHolder: 'Select workspace folder'
+                });
+
+                if (!selected) {
+                    return;
+                }
+
+                return selected.folder;
             }
 
-            const selected = await vscode.window.showQuickPick(vscode.workspace.workspaceFolders.map(folder => ({
-                label: folder.name,
-                folder
-            })), {
-                placeHolder: 'Select workspace folder'
-            });
-
-            if (!selected) {
-                return;
-            }
-
-            return selected.folder;
+            // Otherwise, use the first one
+            const folder = vscode.workspace.workspaceFolders[0];
+            return folder;
         };
 
         // Open last folder if there is one
@@ -131,7 +136,7 @@ exports.activate = context => {
             return showError('You must have a workspace opened.');
         }
 
-        getWorkspaceFolder().then(folder => folder && getPackageFolder(folder)).then(folder => {
+        getWorkspaceFolder().then(folder => folder && getProjectFolder(folder)).then(folder => {
             if (folder) {
                 searchPath(folder.name, folder.path, nodeModulesPath);
             }
