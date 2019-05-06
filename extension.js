@@ -1,10 +1,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const util = require('util');
-
-const exists = util.promisify(fs.exists);
-const readdir = util.promisify(fs.readdir);
+const { findModuleDirs } = require('./utils');
 
 var lastFolder = '';
 var lastWorkspaceName = '';
@@ -80,34 +77,21 @@ exports.activate = context => {
         };
 
         const getPackageFolder = async (workspaceFolder) => {
-            const packagesPath = path.join(workspaceFolder.uri.fsPath, 'packages');
-            if (await exists(packagesPath)) {
-                const packages = [];
+            const packages = await findModuleDirs(workspaceFolder.uri.fsPath);
+            if (packages.length > 1) {
+                const selected = await vscode.window.showQuickPick(
+                    packages.map(packageName => ({ label: path.join(workspaceFolder.name, packageName), name: packageName }))
+                    , { placeHolder: 'Select package' }
+                );
+                if (!selected) {
+                    return;
+                }
 
-                await Promise.all((await readdir(packagesPath)).map(async packageFolder => {
-                    const packageNodeModulesPath = path.join(packagesPath, packageFolder, nodeModules);
-                    if (await exists(packageNodeModulesPath)) {
-                        packages.push(packageFolder);
-                    }
-                }));
-                if (packages.length) {
-                    const selected = await vscode.window.showQuickPick(
-                        [
-                            { label: workspaceFolder.name, name: workspaceFolder.name},
-                            ...packages.map(packageName => ({ label: `${workspaceFolder.name}/${packageName}`, name: packageName }))
-                        ]
-                        , { placeHolder: 'Select package' }
-                    );
-                    if (!selected) {
-                        return;
-                    }
-
-                    if (selected !== workspaceFolder.name) {
-                        return {
-                            name: selected.name,
-                            path: path.join(packagesPath, selected.name)
-                        };
-                    }
+                if (selected !== workspaceFolder.name) {
+                    return {
+                        name: selected.label,
+                        path: path.join(workspaceFolder.uri.fsPath, selected.name)
+                    };
                 }
             }
 
